@@ -29,6 +29,8 @@ namespace RdpLauncher
         private object m_backdropController;
         private SystemBackdropConfiguration m_configurationSource;
         private const string SettingsFileName = "rdp-launcher-settings.txt";
+        private const string MachineHistoryFileName = "machine-history.txt";
+        private List<string> m_machineHistory = new List<string>();
         
         // RDP window positioning (for the remote desktop session)
         private int rdpPositionX = 0;
@@ -49,6 +51,7 @@ namespace RdpLauncher
                 SetupMicaBackdrop();
                 InitializeWindow();
                 LoadWindowPosition();
+                LoadMachineHistory();
                 
                 // Set window size after the window is activated (fully loaded)
                 this.Activated += MainWindow_Activated;
@@ -181,6 +184,33 @@ namespace RdpLauncher
             }
         }
 
+        private void LoadMachineHistory()
+        {
+            try
+            {
+                string historyPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "RdpLauncher",
+                    MachineHistoryFileName
+                );
+
+                if (File.Exists(historyPath))
+                {
+                    m_machineHistory = new List<string>(File.ReadAllLines(historyPath));
+                    
+                    // Remove empty lines
+                    m_machineHistory.RemoveAll(string.IsNullOrWhiteSpace);
+                    
+                    // Update ComboBox
+                    UpdateMachineComboBox();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error loading machine history: {ex.Message}");
+            }
+        }
+
         private void SaveWindowPosition()
         {
             try
@@ -207,6 +237,65 @@ namespace RdpLauncher
             {
                 Debug.WriteLine($"Error saving window position: {ex.Message}");
             }
+        }
+
+        private void SaveMachineHistory()
+        {
+            try
+            {
+                string settingsDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "RdpLauncher"
+                );
+
+                Directory.CreateDirectory(settingsDir);
+
+                string historyPath = Path.Combine(settingsDir, MachineHistoryFileName);
+                File.WriteAllLines(historyPath, m_machineHistory);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error saving machine history: {ex.Message}");
+            }
+        }
+
+        private void UpdateMachineComboBox()
+        {
+            // Store current text
+            string currentText = MachineNameComboBox.Text;
+            
+            // Clear and repopulate
+            MachineNameComboBox.Items.Clear();
+            foreach (var machine in m_machineHistory)
+            {
+                MachineNameComboBox.Items.Add(machine);
+            }
+            
+            // Restore text
+            MachineNameComboBox.Text = currentText;
+        }
+
+        private void AddMachineToHistory(string machineName)
+        {
+            if (string.IsNullOrWhiteSpace(machineName))
+                return;
+
+            machineName = machineName.Trim();
+
+            // Remove if already exists (to move to top)
+            m_machineHistory.Remove(machineName);
+
+            // Add to beginning
+            m_machineHistory.Insert(0, machineName);
+
+            // Keep only last 20 entries
+            if (m_machineHistory.Count > 20)
+            {
+                m_machineHistory.RemoveRange(20, m_machineHistory.Count - 20);
+            }
+
+            SaveMachineHistory();
+            UpdateMachineComboBox();
         }
 
         private void OnWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -257,9 +346,30 @@ namespace RdpLauncher
             }
         }
 
-        private void ServerAddressTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        private void MachineNameComboBox_TextSubmitted(ComboBox sender, ComboBoxTextSubmittedEventArgs args)
         {
             UpdateLaunchButtonState();
+            UpdateRemoveButtonState();
+        }
+
+        private void MachineNameComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateLaunchButtonState();
+            UpdateRemoveButtonState();
+        }
+
+        private void RemoveMachineButton_Click(object sender, RoutedEventArgs e)
+        {
+            string machineName = MachineNameComboBox.Text.Trim();
+            
+            if (!string.IsNullOrWhiteSpace(machineName) && m_machineHistory.Contains(machineName))
+            {
+                m_machineHistory.Remove(machineName);
+                SaveMachineHistory();
+                UpdateMachineComboBox();
+                MachineNameComboBox.Text = "";
+                UpdateRemoveButtonState();
+            }
         }
 
         private void ResolutionNumberBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
@@ -294,12 +404,24 @@ namespace RdpLauncher
 
         private void UpdateLaunchButtonState()
         {
-            if (LaunchButton == null || WidthNumberBox == null || HeightNumberBox == null || ServerAddressTextBox == null)
+            if (LaunchButton == null || WidthNumberBox == null || HeightNumberBox == null || MachineNameComboBox == null)
                 return;
         
-            LaunchButton.IsEnabled = !string.IsNullOrWhiteSpace(ServerAddressTextBox.Text) &&
+            LaunchButton.IsEnabled = !string.IsNullOrWhiteSpace(MachineNameComboBox.Text) &&
                                      WidthNumberBox.Value >= 800 &&
                                      HeightNumberBox.Value >= 600;
+        }
+
+        private void UpdateRemoveButtonState()
+        {
+            if (RemoveMachineButton == null || MachineNameComboBox == null)
+                return;
+
+            string machineName = MachineNameComboBox.Text.Trim();
+            bool isInHistory = !string.IsNullOrWhiteSpace(machineName) && m_machineHistory.Contains(machineName);
+            
+            RemoveMachineButton.IsEnabled = isInHistory;
+            RemoveMachineButton.Visibility = isInHistory ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void SetResolution_2532x2012(object sender, RoutedEventArgs e)
@@ -330,7 +452,10 @@ namespace RdpLauncher
         {
             try
             {
-                string serverAddress = ServerAddressTextBox.Text.Trim();
+                string serverAddress = MachineNameComboBox.Text.Trim();
+
+                // Add to history before launching
+                AddMachineToHistory(serverAddress);
 
                 // Create RDP file
                 string rdpContent = GenerateRdpContent(serverAddress, rdpPositionX, rdpPositionY, rdpWindowRight, rdpWindowBottom);

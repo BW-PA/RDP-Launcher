@@ -29,13 +29,31 @@
                            Style="{StaticResource TitleTextBlockStyle}"
                            Margin="0,8,0,16"/>
 
-                <!-- Server Address -->
+                <!-- Machine Name -->
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Server Address" 
-                               Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <TextBox x:Name="ServerAddressTextBox"
-                             PlaceholderText="server.domain.com"
-                             TextChanged="ServerAddressTextBox_TextChanged"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Machine Name" 
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   VerticalAlignment="Center"/>
+                        <Button x:Name="RemoveMachineButton"
+                                Grid.Column="1"
+                                Content="Remove"
+                                Click="RemoveMachineButton_Click"
+                                IsEnabled="False"
+                                Visibility="Collapsed"
+                                Padding="12,4"
+                                FontSize="12"/>
+                    </Grid>
+                    <ComboBox x:Name="MachineNameComboBox"
+                              IsEditable="True"
+                              PlaceholderText="server.domain.com"
+                              HorizontalAlignment="Stretch"
+                              TextSubmitted="MachineNameComboBox_TextSubmitted"
+                              SelectionChanged="MachineNameComboBox_SelectionChanged"/>
                 </StackPanel>
 
                 <!-- Resolution Settings -->

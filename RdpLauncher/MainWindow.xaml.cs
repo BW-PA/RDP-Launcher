@@ -13,6 +13,16 @@ using WinRT;
 
 namespace RdpLauncher
 {
+    // PInvoke for DPI functions
+    internal static class PInvoke
+    {
+        internal static class User32
+        {
+            [DllImport("user32.dll")]
+            internal static extern uint GetDpiForWindow(IntPtr hwnd);
+        }
+    }
+
     public sealed partial class MainWindow : Window
     {
         private AppWindow m_appWindow;
@@ -36,14 +46,40 @@ namespace RdpLauncher
             {
                 this.InitializeComponent();
                 
-                InitializeWindow();
                 SetupMicaBackdrop();
+                InitializeWindow();
                 LoadWindowPosition();
+                
+                // Set window size after the window is activated (fully loaded)
+                this.Activated += MainWindow_Activated;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error in MainWindow constructor: {ex}");
                 throw;
+            }
+        }
+
+        private void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
+        {
+            // Only run once
+            this.Activated -= MainWindow_Activated;
+            
+            // Get DPI scaling factor
+            IntPtr hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var dpi = PInvoke.User32.GetDpiForWindow(hWnd);
+            double scaleFactor = dpi / 96.0; // 96 DPI is 100% scaling
+            
+            // Calculate scaled window size
+            // Use a smaller base height now that we removed the MinHeight constraint
+            // The window will grow when InfoBar is shown
+            int scaledWidth = (int)(600 * scaleFactor);
+            int scaledHeight = (int)(750 * scaleFactor);
+            
+            // Set the window size now that it's fully loaded
+            if (m_appWindow != null)
+            {
+                m_appWindow.Resize(new SizeInt32(scaledWidth, scaledHeight));
             }
         }
 
@@ -65,9 +101,6 @@ namespace RdpLauncher
                 // Set the title bar element
                 SetTitleBar(AppTitleBar);
             }
-
-            // Set window size - increased height to show all controls
-            m_appWindow.Resize(new SizeInt32(600, 850));
 
             // Handle window closing to save position
             m_appWindow.Closing += OnWindowClosing;
@@ -135,7 +168,7 @@ namespace RdpLauncher
                         }
                     }
 
-                    // Apply saved position
+                    // Apply saved position (but not size - we want to keep our default size)
                     if (launcherWindowX != 0 || launcherWindowY != 0)
                     {
                         m_appWindow.Move(new PointInt32(launcherWindowX, launcherWindowY));
@@ -179,6 +212,49 @@ namespace RdpLauncher
         private void OnWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
         {
             SaveWindowPosition();
+        }
+
+        private void StatusInfoBar_Closed(InfoBar sender, InfoBarClosedEventArgs args)
+        {
+            // Collapse the InfoBar when closed to reclaim space
+            StatusInfoBar.Visibility = Visibility.Collapsed;
+            
+            // Shrink window back to original size
+            ShrinkWindowAfterInfoBar();
+        }
+
+        private void ExpandWindowForInfoBar()
+        {
+            // Get DPI scaling factor
+            IntPtr hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var dpi = PInvoke.User32.GetDpiForWindow(hWnd);
+            double scaleFactor = dpi / 96.0;
+            
+            // Expand window to accommodate InfoBar (add ~100px for InfoBar height)
+            int scaledWidth = (int)(600 * scaleFactor);
+            int scaledHeight = (int)(850 * scaleFactor);
+            
+            if (m_appWindow != null)
+            {
+                m_appWindow.Resize(new SizeInt32(scaledWidth, scaledHeight));
+            }
+        }
+
+        private void ShrinkWindowAfterInfoBar()
+        {
+            // Get DPI scaling factor
+            IntPtr hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var dpi = PInvoke.User32.GetDpiForWindow(hWnd);
+            double scaleFactor = dpi / 96.0;
+            
+            // Shrink window back to original compact size
+            int scaledWidth = (int)(600 * scaleFactor);
+            int scaledHeight = (int)(750 * scaleFactor);
+            
+            if (m_appWindow != null)
+            {
+                m_appWindow.Resize(new SizeInt32(scaledWidth, scaledHeight));
+            }
         }
 
         private void ServerAddressTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -259,11 +335,6 @@ namespace RdpLauncher
                 // Create RDP file
                 string rdpContent = GenerateRdpContent(serverAddress, rdpPositionX, rdpPositionY, rdpWindowRight, rdpWindowBottom);
                 string tempRdpFile = Path.GetTempFileName() + ".rdp";
-                
-                // DEBUGGING: Also save to Desktop for inspection
-                string desktopPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "RDP-Debug-Last-Launch.rdp");
-                File.WriteAllText(desktopPath, rdpContent);
-                
                 File.WriteAllText(tempRdpFile, rdpContent);
 
                 // Launch RDP
@@ -281,10 +352,14 @@ namespace RdpLauncher
                 int height = rdpWindowBottom - rdpPositionY;
 
                 // Show success message
+                StatusInfoBar.Visibility = Visibility.Visible;
                 StatusInfoBar.Severity = InfoBarSeverity.Success;
                 StatusInfoBar.Title = "RDP Launched";
-                StatusInfoBar.Message = $"Connection to {serverAddress} at {width}×{height} - Position: ({rdpPositionX},{rdpPositionY}) to ({rdpWindowRight},{rdpWindowBottom})";
+                StatusInfoBar.Message = $"Connection to {serverAddress} at {width}×{height}";
                 StatusInfoBar.IsOpen = true;
+                
+                // Expand window to show InfoBar
+                ExpandWindowForInfoBar();
 
                 // Clean up temp file after a delay
                 await System.Threading.Tasks.Task.Delay(2000);
@@ -301,10 +376,14 @@ namespace RdpLauncher
             }
             catch (Exception ex)
             {
+                StatusInfoBar.Visibility = Visibility.Visible;
                 StatusInfoBar.Severity = InfoBarSeverity.Error;
                 StatusInfoBar.Title = "Launch Failed";
                 StatusInfoBar.Message = ex.Message;
                 StatusInfoBar.IsOpen = true;
+                
+                // Expand window to show InfoBar
+                ExpandWindowForInfoBar();
             }
         }
 

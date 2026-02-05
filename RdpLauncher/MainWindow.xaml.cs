@@ -9,32 +9,52 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using Windows.Graphics;
-using WinRT.Interop;
+using WinRT;
 
 namespace RdpLauncher
 {
     public sealed partial class MainWindow : Window
     {
         private AppWindow m_appWindow;
-        private MicaBackdrop m_backdropController;
+        private MicaController m_backdropController;
+        private SystemBackdropConfiguration m_configurationSource;
         private const string SettingsFileName = "rdp-launcher-settings.txt";
         private int positionX = 0;
         private int positionY = 0;
 
         public MainWindow()
         {
-            this.InitializeComponent();
-            
-            InitializeWindow();
-            LoadWindowPosition();
-            SetupMicaBackdrop();
+            try
+            {
+                this.InitializeComponent();
+                
+                // Simplified initialization - skip custom features for now
+                Title = "RDP Launcher";
+                
+                // Try to get window handle
+                IntPtr hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+                WindowId windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hWnd);
+                m_appWindow = AppWindow.GetFromWindowId(windowId);
+                
+                if (m_appWindow != null)
+                {
+                    m_appWindow.Resize(new SizeInt32(600, 700));
+                }
+                
+                // Skip LoadWindowPosition and SetupMicaBackdrop for now
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in MainWindow constructor: {ex}");
+                throw;
+            }
         }
 
         private void InitializeWindow()
         {
             // Get the AppWindow
-            IntPtr hWnd = WindowNative.GetWindowHandle(this);
-            WindowId windowId = Win32Interop.GetWindowIdFromWindow(hWnd);
+            IntPtr hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            WindowId windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hWnd);
             m_appWindow = AppWindow.GetFromWindowId(windowId);
 
             // Set title bar
@@ -59,11 +79,23 @@ namespace RdpLauncher
         private void SetupMicaBackdrop()
         {
             // Setup Mica backdrop for modern Windows 11 look
-            if (MicaController.IsSupported())
+            try
             {
-                m_backdropController = new MicaBackdrop();
-                m_backdropController.Kind = MicaKind.Base;
-                this.SystemBackdrop = m_backdropController;
+                if (MicaController.IsSupported())
+                {
+                    m_configurationSource = new SystemBackdropConfiguration();
+                    m_backdropController = new MicaController();
+                    m_backdropController.Kind = MicaKind.Base;
+                    
+                    // Add as backdrop target using WinRT.As extension
+                    m_backdropController.AddSystemBackdropTarget(this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>());
+                    m_backdropController.SetSystemBackdropConfiguration(m_configurationSource);
+                }
+            }
+            catch (Exception)
+            {
+                // Mica backdrop not available, continue without it
+                m_backdropController = null;
             }
         }
 
@@ -165,6 +197,9 @@ namespace RdpLauncher
 
         private void UpdateLaunchButtonState()
         {
+            if (LaunchButton == null || WidthNumberBox == null || HeightNumberBox == null || ServerAddressTextBox == null)
+                return;
+        
             LaunchButton.IsEnabled = !string.IsNullOrWhiteSpace(ServerAddressTextBox.Text) &&
                                      WidthNumberBox.Value >= 800 &&
                                      HeightNumberBox.Value >= 600;

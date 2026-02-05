@@ -42,6 +42,12 @@
                 <TextBlock Text="Resolution"
                            Style="{StaticResource SubtitleTextBlockStyle}"
                            Margin="0,16,0,8"/>
+                
+                <TextBlock Text="Note: When using preset positions (Left/Center/Right), the resolution is fixed at 2532×2012. Custom resolution is available if you modify the Width/Height values below."
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Margin="0,0,0,8"/>
 
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -54,7 +60,7 @@
                         <TextBlock Text="Width" 
                                    Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <NumberBox x:Name="WidthNumberBox"
-                                   Value="1920"
+                                   Value="2532"
                                    Minimum="800"
                                    Maximum="7680"
                                    SpinButtonPlacementMode="Inline"
@@ -65,7 +71,7 @@
                         <TextBlock Text="Height" 
                                    Style="{StaticResource BodyStrongTextBlockStyle}"/>
                         <NumberBox x:Name="HeightNumberBox"
-                                   Value="1080"
+                                   Value="2012"
                                    Minimum="600"
                                    Maximum="4320"
                                    SpinButtonPlacementMode="Inline"
@@ -75,31 +81,29 @@
 
                 <!-- Common Resolutions -->
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Common Resolutions" 
+                    <TextBlock Text="Quick Presets" 
                                Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="2532×2012 (Default)" Click="SetResolution_2532x2012"/>
                         <Button Content="1920×1080" Click="SetResolution_1920x1080"/>
                         <Button Content="2560×1440" Click="SetResolution_2560x1440"/>
-                        <Button Content="3840×2160" Click="SetResolution_3840x2160"/>
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Monitor Position (Hard-coded options) -->
-                <TextBlock Text="Monitor Position"
+                <!-- Window Position -->
+                <TextBlock Text="Window Position"
                            Style="{StaticResource SubtitleTextBlockStyle}"
                            Margin="0,16,0,8"/>
 
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Select target monitor" 
+                    <TextBlock Text="Choose where to place the RDP window on your ultrawide monitor" 
                                Style="{StaticResource BodyStrongTextBlockStyle}"/>
                     <ComboBox x:Name="MonitorComboBox"
                               HorizontalAlignment="Stretch"
                               SelectionChanged="MonitorComboBox_SelectionChanged">
-                        <ComboBoxItem Content="Primary Monitor (0, 0)" Tag="0,0" IsSelected="True"/>
-                        <ComboBoxItem Content="Secondary Monitor Left (-1920, 0)" Tag="-1920,0"/>
-                        <ComboBoxItem Content="Secondary Monitor Right (1920, 0)" Tag="1920,0"/>
-                        <ComboBoxItem Content="Secondary Monitor Above (0, -1080)" Tag="0,-1080"/>
-                        <ComboBoxItem Content="Secondary Monitor Below (0, 1080)" Tag="0,1080"/>
+                        <ComboBoxItem Content="Left (2532×2012)" Tag="0,25,2532,2037" IsSelected="True"/>
+                        <ComboBoxItem Content="Center (2532×2012)" Tag="1294,25,3826,2037"/>
+                        <ComboBoxItem Content="Right (2532×2012)" Tag="2560,25,5092,2037"/>
                     </ComboBox>
                 </StackPanel>
 

@@ -16,11 +16,19 @@ namespace RdpLauncher
     public sealed partial class MainWindow : Window
     {
         private AppWindow m_appWindow;
-        private MicaController m_backdropController;
+        private object m_backdropController;
         private SystemBackdropConfiguration m_configurationSource;
         private const string SettingsFileName = "rdp-launcher-settings.txt";
-        private int positionX = 0;
-        private int positionY = 0;
+        
+        // RDP window positioning (for the remote desktop session)
+        private int rdpPositionX = 0;
+        private int rdpPositionY = 25;  // Default Y offset for taskbar
+        private int rdpWindowRight = 2532;  // Default to left position
+        private int rdpWindowBottom = 2037;
+        
+        // Launcher window positioning (for this app's window)
+        private int launcherWindowX = 0;
+        private int launcherWindowY = 0;
 
         public MainWindow()
         {
@@ -28,20 +36,9 @@ namespace RdpLauncher
             {
                 this.InitializeComponent();
                 
-                // Simplified initialization - skip custom features for now
-                Title = "RDP Launcher";
-                
-                // Try to get window handle
-                IntPtr hWnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-                WindowId windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hWnd);
-                m_appWindow = AppWindow.GetFromWindowId(windowId);
-                
-                if (m_appWindow != null)
-                {
-                    m_appWindow.Resize(new SizeInt32(600, 700));
-                }
-                
-                // Skip LoadWindowPosition and SetupMicaBackdrop for now
+                InitializeWindow();
+                SetupMicaBackdrop();
+                LoadWindowPosition();
             }
             catch (Exception ex)
             {
@@ -69,8 +66,8 @@ namespace RdpLauncher
                 SetTitleBar(AppTitleBar);
             }
 
-            // Set window size
-            m_appWindow.Resize(new SizeInt32(600, 700));
+            // Set window size - increased height to show all controls
+            m_appWindow.Resize(new SizeInt32(600, 850));
 
             // Handle window closing to save position
             m_appWindow.Closing += OnWindowClosing;
@@ -78,23 +75,37 @@ namespace RdpLauncher
 
         private void SetupMicaBackdrop()
         {
-            // Setup Mica backdrop for modern Windows 11 look
+            // Setup backdrop for modern Windows 11 look
+            // Using DesktopAcrylicBackdrop to match Windows Explorer's subtle effect
             try
             {
-                if (MicaController.IsSupported())
+                if (DesktopAcrylicController.IsSupported())
                 {
                     m_configurationSource = new SystemBackdropConfiguration();
-                    m_backdropController = new MicaController();
-                    m_backdropController.Kind = MicaKind.Base;
+                    var acrylicController = new DesktopAcrylicController();
                     
                     // Add as backdrop target using WinRT.As extension
-                    m_backdropController.AddSystemBackdropTarget(this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>());
-                    m_backdropController.SetSystemBackdropConfiguration(m_configurationSource);
+                    acrylicController.AddSystemBackdropTarget(this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>());
+                    acrylicController.SetSystemBackdropConfiguration(m_configurationSource);
+                    
+                    m_backdropController = acrylicController;
+                }
+                else if (MicaController.IsSupported())
+                {
+                    // Fallback to Mica if Acrylic not available
+                    m_configurationSource = new SystemBackdropConfiguration();
+                    var micaController = new MicaController();
+                    micaController.Kind = MicaKind.BaseAlt; // More subtle than Base
+                    
+                    micaController.AddSystemBackdropTarget(this.As<Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop>());
+                    micaController.SetSystemBackdropConfiguration(m_configurationSource);
+                    
+                    m_backdropController = micaController;
                 }
             }
             catch (Exception)
             {
-                // Mica backdrop not available, continue without it
+                // Backdrop not available, continue without it
                 m_backdropController = null;
             }
         }
@@ -116,20 +127,18 @@ namespace RdpLauncher
                     {
                         if (line.StartsWith("WindowX="))
                         {
-                            int.TryParse(line.Substring(8), out int x);
-                            positionX = x;
+                            int.TryParse(line.Substring(8), out launcherWindowX);
                         }
                         else if (line.StartsWith("WindowY="))
                         {
-                            int.TryParse(line.Substring(8), out int y);
-                            positionY = y;
+                            int.TryParse(line.Substring(8), out launcherWindowY);
                         }
                     }
 
                     // Apply saved position
-                    if (positionX != 0 || positionY != 0)
+                    if (launcherWindowX != 0 || launcherWindowY != 0)
                     {
-                        m_appWindow.Move(new PointInt32(positionX, positionY));
+                        m_appWindow.Move(new PointInt32(launcherWindowX, launcherWindowY));
                     }
                 }
             }
@@ -184,13 +193,25 @@ namespace RdpLauncher
 
         private void MonitorComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            // Parse the selected position from the ComboBox tag
+            // These coordinates are designed for a 5K2K ultrawide monitor (5120×2160)
+            // Tag format: "X,Y,Right,Bottom" matching the winposstr format
+            // Example: "0,25,2532,2037" for left position with 2532×2012 window
             if (MonitorComboBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
             {
                 string[] parts = tag.Split(',');
-                if (parts.Length == 2)
+                if (parts.Length == 4)
                 {
-                    int.TryParse(parts[0], out positionX);
-                    int.TryParse(parts[1], out positionY);
+                    int.TryParse(parts[0], out rdpPositionX);
+                    int.TryParse(parts[1], out rdpPositionY);
+                    int.TryParse(parts[2], out rdpWindowRight);
+                    int.TryParse(parts[3], out rdpWindowBottom);
+                    
+                    // Update the Width/Height boxes to reflect the preset dimensions
+                    int width = rdpWindowRight - rdpPositionX;
+                    int height = rdpWindowBottom - rdpPositionY;
+                    WidthNumberBox.Value = width;
+                    HeightNumberBox.Value = height;
                 }
             }
         }
@@ -203,6 +224,12 @@ namespace RdpLauncher
             LaunchButton.IsEnabled = !string.IsNullOrWhiteSpace(ServerAddressTextBox.Text) &&
                                      WidthNumberBox.Value >= 800 &&
                                      HeightNumberBox.Value >= 600;
+        }
+
+        private void SetResolution_2532x2012(object sender, RoutedEventArgs e)
+        {
+            WidthNumberBox.Value = 2532;
+            HeightNumberBox.Value = 2012;
         }
 
         private void SetResolution_1920x1080(object sender, RoutedEventArgs e)
@@ -228,12 +255,15 @@ namespace RdpLauncher
             try
             {
                 string serverAddress = ServerAddressTextBox.Text.Trim();
-                int width = (int)WidthNumberBox.Value;
-                int height = (int)HeightNumberBox.Value;
 
                 // Create RDP file
-                string rdpContent = GenerateRdpContent(serverAddress, width, height, positionX, positionY);
+                string rdpContent = GenerateRdpContent(serverAddress, rdpPositionX, rdpPositionY, rdpWindowRight, rdpWindowBottom);
                 string tempRdpFile = Path.GetTempFileName() + ".rdp";
+                
+                // DEBUGGING: Also save to Desktop for inspection
+                string desktopPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "RDP-Debug-Last-Launch.rdp");
+                File.WriteAllText(desktopPath, rdpContent);
+                
                 File.WriteAllText(tempRdpFile, rdpContent);
 
                 // Launch RDP
@@ -246,10 +276,14 @@ namespace RdpLauncher
 
                 Process.Start(processInfo);
 
+                // Calculate dimensions for display message
+                int width = rdpWindowRight - rdpPositionX;
+                int height = rdpWindowBottom - rdpPositionY;
+
                 // Show success message
                 StatusInfoBar.Severity = InfoBarSeverity.Success;
                 StatusInfoBar.Title = "RDP Launched";
-                StatusInfoBar.Message = $"Connection to {serverAddress} at {width}×{height}";
+                StatusInfoBar.Message = $"Connection to {serverAddress} at {width}×{height} - Position: ({rdpPositionX},{rdpPositionY}) to ({rdpWindowRight},{rdpWindowBottom})";
                 StatusInfoBar.IsOpen = true;
 
                 // Clean up temp file after a delay
@@ -274,14 +308,25 @@ namespace RdpLauncher
             }
         }
 
-        private string GenerateRdpContent(string serverAddress, int width, int height, int posX, int posY)
+        private string GenerateRdpContent(string serverAddress, int posX, int posY, int right, int bottom)
         {
-            return $@"screen mode id:i:2
+            // Calculate window dimensions from coordinates
+            int windowWidth = right - posX;
+            int windowHeight = bottom - posY;
+            
+            // Use fixed desktop resolution with smart sizing enabled
+            // This allows the RDP session to scale to the window size
+            int desktopWidth = 1480;
+            int desktopHeight = 1150;
+            
+            return $@"full address:s:{serverAddress}
+screen mode id:i:1
 use multimon:i:0
-desktopwidth:i:{width}
-desktopheight:i:{height}
+desktopwidth:i:{desktopWidth}
+desktopheight:i:{desktopHeight}
+smart sizing:i:1
+winposstr:s:0,1,{posX},{posY},{right},{bottom}
 session bpp:i:32
-winposstr:s:0,{posX},{posY},{posX + width},{posY + height}
 compression:i:1
 keyboardhook:i:2
 audiocapturemode:i:0
@@ -291,6 +336,7 @@ networkautodetect:i:1
 bandwidthautodetect:i:1
 displayconnectionbar:i:1
 enableworkspacereconnect:i:0
+remoteappmousemoveinject:i:1
 disable wallpaper:i:0
 allow font smoothing:i:0
 allow desktop composition:i:0
@@ -299,11 +345,12 @@ disable menu anims:i:1
 disable themes:i:0
 disable cursor setting:i:0
 bitmapcachepersistenable:i:1
-full address:s:{serverAddress}
 audiomode:i:0
 redirectprinters:i:1
+redirectlocation:i:0
 redirectcomports:i:0
 redirectsmartcards:i:1
+redirectwebauthn:i:1
 redirectclipboard:i:1
 redirectposdevices:i:0
 autoreconnection enabled:i:1
@@ -322,6 +369,8 @@ gatewaybrokeringtype:i:0
 use redirection server name:i:0
 rdgiskdcproxy:i:0
 kdcproxyname:s:
+enablerdsaadauth:i:0
+drivestoredirect:s:C:\;
 ";
         }
     }

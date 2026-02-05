@@ -375,31 +375,53 @@ namespace RdpLauncher
         private void ResolutionNumberBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
         {
             UpdateLaunchButtonState();
+            UpdateRdpWindowCoordinates();
         }
 
         private void MonitorComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            // Parse the selected position from the ComboBox tag
-            // These coordinates are designed for a 5K2K ultrawide monitor (5120×2160)
-            // Tag format: "X,Y,Right,Bottom" matching the winposstr format
-            // Example: "0,25,2532,2037" for left position with 2532×2012 window
+            UpdateRdpWindowCoordinates();
+            
+            // Update the Width/Height boxes to reflect the preset dimensions
             if (MonitorComboBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
             {
                 string[] parts = tag.Split(',');
                 if (parts.Length == 4)
                 {
-                    int.TryParse(parts[0], out rdpPositionX);
-                    int.TryParse(parts[1], out rdpPositionY);
-                    int.TryParse(parts[2], out rdpWindowRight);
-                    int.TryParse(parts[3], out rdpWindowBottom);
+                    int.TryParse(parts[0], out int x);
+                    int.TryParse(parts[2], out int right);
+                    int.TryParse(parts[3], out int bottom);
                     
-                    // Update the Width/Height boxes to reflect the preset dimensions
-                    int width = rdpWindowRight - rdpPositionX;
-                    int height = rdpWindowBottom - rdpPositionY;
+                    int width = right - x;
+                    int height = bottom - rdpPositionY;
                     WidthNumberBox.Value = width;
                     HeightNumberBox.Value = height;
                 }
             }
+        }
+
+        private void UpdateRdpWindowCoordinates()
+        {
+            if (WidthNumberBox == null || HeightNumberBox == null || MonitorComboBox == null)
+                return;
+
+            // Get base X position from the selected monitor position
+            if (MonitorComboBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+            {
+                string[] parts = tag.Split(',');
+                if (parts.Length >= 2)
+                {
+                    int.TryParse(parts[0], out rdpPositionX);
+                    int.TryParse(parts[1], out rdpPositionY);
+                }
+            }
+
+            // Calculate right and bottom based on current width/height values
+            int width = (int)WidthNumberBox.Value;
+            int height = (int)HeightNumberBox.Value;
+            
+            rdpWindowRight = rdpPositionX + width;
+            rdpWindowBottom = rdpPositionY + height;
         }
 
         private void UpdateLaunchButtonState()
